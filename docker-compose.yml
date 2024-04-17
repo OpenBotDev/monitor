@@ -1,0 +1,69 @@
+services:
+
+  # Database
+  mongodb:
+    image: mongo
+    volumes:
+      - mongodbdata:/data/db
+    networks:
+      - solananetwork
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "user"
+      MONGO_INITDB_ROOT_PASSWORD: "password"
+
+  # RabbitMQ Service
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    hostname: "rabbitmq"
+    environment:
+      RABBITMQ_DEFAULT_USER: "user"
+      RABBITMQ_DEFAULT_PASS: "password"
+    ports:
+      - "5672:5672" # AMQP protocol port
+      - "15672:15672" # Management interface port
+    networks:
+      - solananetwork
+
+  monitor:
+    build: .
+    volumes:
+      - .:/src
+    env_file:
+      - .env
+    command: sh -c "yarn start"
+    depends_on:
+      - rabbitmq
+    networks:
+      - solananetwork
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+
+  # server:
+  #   build: .
+  #   volumes:
+  #     - .:/src
+  #   env_file:
+  #     - .env
+  #   command: sh -c "yarn server"
+  #   depends_on:
+  #     - pooltracker
+  #     - rabbitmq
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     - solananetwork
+  #   environment:
+  #     - RABBITMQ_HOST=rabbitmq
+
+volumes:
+  mongodbdata:
+
+networks:
+  solananetwork:
