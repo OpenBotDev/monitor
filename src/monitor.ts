@@ -42,6 +42,7 @@ export class PoolMonitor {
     private counter_tx = 0;
     private counter_msg = 0;
     private counter_blocks = 0;
+    private last_slot = 0;
 
     /**
      * Initializes a new instance of the PoolMonitor class.
@@ -112,9 +113,11 @@ export class PoolMonitor {
                 const currentDate = new Date();
                 const t = currentDate.getTime() / 1000;
                 const delta = (t - runTimestamp);
+                const txsec = this.counter_tx / delta;
 
                 logger.info('Seconds since start: ' + delta.toFixed(0));
                 logger.info('count tx ' + this.counter_tx);
+                logger.info('tx/sec ' + txsec.toFixed(0));
                 logger.info('count msg ' + this.counter_msg);
                 logger.info('count blocks ' + this.counter_blocks);
             } catch (error) {
@@ -123,6 +126,7 @@ export class PoolMonitor {
         }, reportTime); // seconds
 
         logger.info('subscribe to mention ' + RAYDIUM_LIQUIDITY_PROGRAM_ID_V4);
+
         this.ws.onopen = (ev) => {
             logger.info('ws open');
             const subscribeMsg = {
@@ -157,20 +161,26 @@ export class PoolMonitor {
                 // logger.info(`msg ${util.inspect(ev, { showHidden: false, depth: null, colors: true })}`);
                 if (msgdata.method && msgdata.method === "blockNotification") {
                     let v = msgdata.params.result.value;
-                    logger.info(`received slot ${v.slot} ${v.block.blockhash}`);
-                    const transactions = v.block.transactions;
-                    logger.info('transactions ' + transactions.length);
-                    this.counter_tx += transactions.length;
+                    if (v.slot > this.last_slot) {
+                        this.last_slot = v.slot;
 
-                    // // for (const tx of transactions) {
-                    // //     logger.info(tx.logMessages);
-                    // // }
-                    // for (const transaction of transactions) {
-                    //     this.counter_tx += 1;
-                    //     //logger.info(transaction.meta.logMessages);
-                    //     //logger.info(`msg ${util.inspect(transaction, { showHidden: false, depth: null, colors: true })}`);
-                    //     //return;
-                    // }
+                        logger.info(`received slot ${v.slot} ${v.block.blockhash}`);
+                        const transactions = v.block.transactions;
+                        logger.info('transactions ' + transactions.length);
+                        this.counter_tx += transactions.length;
+
+                        // // for (const tx of transactions) {
+                        // //     logger.info(tx.logMessages);
+                        // // }
+                        // for (const transaction of transactions) {
+                        //     this.counter_tx += 1;
+                        //     //logger.info(transaction.meta.logMessages);
+                        //     //logger.info(`msg ${util.inspect(transaction, { showHidden: false, depth: null, colors: true })}`);
+                        //     //return;
+                        // }
+                    } else {
+                        //ignore same slot
+                    }
                 } else {
                     logger.info('other?');
                     //logger.info(message);
