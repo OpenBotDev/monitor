@@ -1,7 +1,8 @@
 
 import 'dotenv/config';
 
-import { logger } from "./logger";
+import { logger } from './logger';
+import { decodeRayLogSwap } from './decode'
 const util = require('util');
 import { Connection, PublicKey } from '@solana/web3.js';
 //import { BorshCoder, Idl } from '@coral-xyz/anchor';
@@ -169,15 +170,34 @@ export class PoolMonitor {
                         logger.info('transactions ' + transactions.length);
                         this.counter_tx += transactions.length;
 
-                        // // for (const tx of transactions) {
-                        // //     logger.info(tx.logMessages);
-                        // // }
-                        // for (const transaction of transactions) {
-                        //     this.counter_tx += 1;
-                        //     //logger.info(transaction.meta.logMessages);
-                        //     //logger.info(`msg ${util.inspect(transaction, { showHidden: false, depth: null, colors: true })}`);
-                        //     //return;
-                        // }
+                        for (const transaction of transactions) {
+                            this.counter_tx += 1;
+                            for (let logEntry of transaction.meta.logMessages) {
+
+                                //TODO parser
+                                if (logEntry.includes('ray_log')) {
+                                    //Program log: ray_log: 
+                                    let raylog = logEntry.slice(22, logEntry.length);
+                                    let logtype = raylog[0];
+                                    //logger.info(logtype);
+                                    if (logtype == 'A') {
+                                        let swap = decodeRayLogSwap(raylog);
+                                        logger.info(swap.user_source);
+                                        // logger.info(swap.sdirection);
+                                        // logger.info(swap.amount_in);
+                                        // logger.info(swap.pool_pc);
+                                    }
+                                    // found_ray = true;
+                                    // raylog = logEntry.split('ray_log: ')[1]
+                                    // //logger.info(raylog);
+                                    // //TODO can improve no need to decode all
+                                    // infolog = decodeRayLogSwap(raylog);
+                                }
+                            }
+                            //logger.info(transaction.meta.logMessages);
+                            //logger.info(`msg ${util.inspect(transaction, { showHidden: false, depth: null, colors: true })}`);
+                            //return;
+                        }
                     } else {
                         //ignore same slot
                     }
