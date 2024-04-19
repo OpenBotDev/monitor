@@ -2,22 +2,17 @@
 import 'dotenv/config';
 
 import { logger } from "./logger";
-const util = require('util');
 import { Connection, PublicKey } from '@solana/web3.js';
-//import { BorshCoder, Idl } from '@coral-xyz/anchor';
+//TODO
+const IDL = require('./raydium_idl/idl.json');
 import { MAINNET_PROGRAM_ID } from '@raydium-io/raydium-sdk';
 import { rabbitMQPublisher } from './pub';
 //import { rabbitMQSubscriber } from './sub.js';
-//import { RaydiumAmmCoder } from './raydium_idl/coder/index';
-//import RaydiumIDL from './raydium_idl/idl.json'; // assert { type: 'json' };
-import { Idl } from "@project-serum/anchor";
+import { RaydiumAmmCoder } from './raydium_idl/coder/index';
 import { LIQUIDITY_STATE_LAYOUT_V4, MARKET_STATE_LAYOUT_V3, Token, TokenAmount } from '@raydium-io/raydium-sdk';
-import WebSocket from 'ws';
+
 import { BN } from 'bn.js';
-import {
-    SolanaParser,
-    parseTransactionAccounts,
-} from '@debridge-finance/solana-transaction-parser';
+import { Idl } from "@coral-xyz/anchor";
 
 export const RAYDIUM_LIQUIDITY_PROGRAM_ID_V4 = MAINNET_PROGRAM_ID.AmmV4;
 
@@ -37,25 +32,16 @@ import { PoolCreationTx } from './types'
 export class PoolMonitor {
 
     private connection: Connection | null = null;
-    //private coder: RaydiumAmmCoder | null = null;
-    private ws: WebSocket;
-    private counter_tx = 0;
-    private counter_msg = 0;
-    private counter_blocks = 0;
+    private coder: RaydiumAmmCoder | null = null;
+
 
     /**
      * Initializes a new instance of the PoolMonitor class.
      * Private constructor to enforce singleton pattern.
      */
     public constructor() {
-        let rpc = process.env.RPC_HOST;
-        let wss = process.env.WSS_HOST!;
-        logger.info("init connection " + `${rpc}`);
-        logger.info("init connection " + `${wss}`);
-        //this.connection = new Connection(`${process.env.RPC_HOST}`, { wsEndpoint: `${process.env.WSS_HOST}` });
-
-        this.ws = new WebSocket(wss);
-
+        logger.info("init connection " + `${process.env.RPC_HOST}`);
+        this.connection = new Connection(`${process.env.RPC_HOST}`, { wsEndpoint: `${process.env.WSS_HOST}` });
         //this.coder = new RaydiumAmmCoder(IDL as Idl);
     }
 
@@ -79,7 +65,6 @@ export class PoolMonitor {
 
         try {
             await rabbitMQPublisher.init();
-            //await this.subscribeAll();
 
             logger.info('RabbitMQ connection established');
         } catch (error) {
@@ -89,107 +74,7 @@ export class PoolMonitor {
 
     }
 
-    /** track pools */
-    public async subscribeAll() {
-        //logger.info(RaydiumIDL.version);
-        //return;
-        // RAYDIUM_LIQUIDITY_PROGRAM_ID_V4
-        // const solanaParser = new SolanaParser([
-        //     //{ idl: ClmmIdl as Idl, programId: RAYDIUM_CLMM_PROGRAM_ID },
-        //     { idl: RaydiumIDL as unknown as Idl, programId: RAYDIUM_LIQUIDITY_PROGRAM_ID_V4 },
-        //     // {
-        //     //     idl: JupiterIdl as Idl,
-        //     //     programId: 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
-        //     // },
-        // ]);
-
-        const reportTime = 5000;
-        const currentDate = new Date();
-        const runTimestamp = currentDate.getTime() / 1000;
-
-        setInterval(() => {
-            try {
-                const currentDate = new Date();
-                const t = currentDate.getTime() / 1000;
-                const delta = (t - runTimestamp);
-
-                logger.info('Seconds since start: ' + delta.toFixed(0));
-                logger.info('count tx ' + this.counter_tx);
-                logger.info('count msg ' + this.counter_msg);
-                logger.info('count blocks ' + this.counter_blocks);
-            } catch (error) {
-                logger.error('Error in setInterval:', error);
-            }
-        }, reportTime); // seconds
-
-        logger.info('subscribe to mention ' + RAYDIUM_LIQUIDITY_PROGRAM_ID_V4);
-        this.ws.onopen = (ev) => {
-            logger.info('ws open');
-            const subscribeMsg = {
-                id: 1,
-                jsonrpc: "2.0",
-                method: "blockSubscribe",
-                params: [
-                    {
-                        mentionsAccountOrProgram:
-                            RAYDIUM_LIQUIDITY_PROGRAM_ID_V4,
-
-                    },
-                    {
-                        maxSupportedTransactionVersion: 0,
-                    }
-                ],
-            };
-
-            this.ws.send(JSON.stringify(subscribeMsg));
-        }
-
-        this.ws.onerror = (err) => {
-            logger.error(err);
-        }
-
-        this.ws.onmessage = async (ev) => {
-            this.counter_msg++;
-            this.counter_blocks++;
-
-            try {
-                const msgdata = JSON.parse(ev.data.toString());
-                // logger.info(`msg ${util.inspect(ev, { showHidden: false, depth: null, colors: true })}`);
-                if (msgdata.method && msgdata.method === "blockNotification") {
-                    let v = msgdata.params.result.value;
-                    logger.info(`received slot ${v.slot} ${v.block.blockhash}`);
-                    const transactions = v.block.transactions;
-                    logger.info('transactions ' + transactions.length);
-                    this.counter_tx += transactions.length;
-
-                    // // for (const tx of transactions) {
-                    // //     logger.info(tx.logMessages);
-                    // // }
-                    // for (const transaction of transactions) {
-                    //     this.counter_tx += 1;
-                    //     //logger.info(transaction.meta.logMessages);
-                    //     //logger.info(`msg ${util.inspect(transaction, { showHidden: false, depth: null, colors: true })}`);
-                    //     //return;
-                    // }
-                } else {
-                    logger.info('other?');
-                    //logger.info(message);
-                    //logger.info(`msg ${util.inspect(ev, { showHidden: false, depth: null, colors: true })}`);
-                    logger.info(msgdata.id);
-                    logger.info(msgdata.result);
-                }
-            }
-            catch (error) {
-                logger.error('cant parse');
-            }
-
-
-
-        }
-
-
-    }
-
+    /** track pools via the fee address */
     public async subscribeToPoolCreate() {
         logger.info('subscribeToPoolCreate');
         if (!this.connection) {
@@ -202,7 +87,7 @@ export class PoolMonitor {
         const reportTime = 5000;
         const currentDate = new Date();
         const runTimestamp = currentDate.getTime() / 1000;
-        let count_pools = 0;
+        let count_open = 0;
 
         setInterval(() => {
             try {
@@ -211,7 +96,7 @@ export class PoolMonitor {
                 const delta = (t - runTimestamp);
 
                 logger.info('Seconds since start: ' + delta.toFixed(0));
-                logger.info('count_pools ' + count_pools);
+                logger.info('count_open ' + count_open);
             } catch (error) {
                 logger.error('Error in setInterval:', error);
             }
@@ -221,7 +106,7 @@ export class PoolMonitor {
             try {
                 //let lastlog: string = rlog.logs[rlog.logs.length - 1];
                 logger.info('sig found ' + rlog.signature);
-                count_pools++;
+                count_open++;
 
                 logger.info('get info');
                 let tx = await this.getPoolTransaction(rlog.signature);
